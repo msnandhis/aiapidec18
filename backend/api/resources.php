@@ -14,7 +14,7 @@ function getResources($category = null) {
                 JOIN categories c ON r.category_id = c.id";
         
         if ($category && $category !== 'all') {
-            $sql .= " WHERE r.category_id = :category";
+            $sql .= " WHERE c.id = :category";  // Changed from r.category_id to c.id
         }
         
         $stmt = $conn->prepare($sql);
@@ -31,7 +31,7 @@ function getResources($category = null) {
             return array(
                 'id' => $row['id'],
                 'name' => $row['name'],
-                'category' => $row['category_id'], // Changed from category_id to category
+                'category' => $row['category_id'], // This matches the frontend type
                 'logo' => $row['logo'],
                 'url' => $row['url'],
                 'description' => $row['description'],
@@ -40,17 +40,12 @@ function getResources($category = null) {
             );
         }, $results);
         
-        return array(
-            'success' => true,
-            'data' => $resources
-        );
+        return $resources; // Return the array directly, not wrapped in success/data
     } catch(PDOException $e) {
         error_log("Database error: " . $e->getMessage());
-        return array(
-            'success' => false,
-            'error' => $e->getMessage(),
-            'error_code' => $e->getCode()
-        );
+        http_response_code(500);
+        echo json_encode(array('error' => 'Database error: ' . $e->getMessage()));
+        exit;
     }
 }
 
@@ -70,36 +65,25 @@ switch ($_SERVER['REQUEST_METHOD']) {
     case 'GET':
         try {
             $category = isset($_GET['category']) ? $_GET['category'] : null;
-            $result = getResources($category);
+            $resources = getResources($category);
             
             // Ensure proper JSON headers
             header('Content-Type: application/json; charset=utf-8');
             
-            if ($result['success']) {
-                // Use JSON_FORCE_OBJECT for empty arrays and JSON_UNESCAPED_SLASHES for cleaner URLs
-                echo json_encode(
-                    $result['data'],
-                    JSON_PRETTY_PRINT | 
-                    JSON_UNESCAPED_SLASHES | 
-                    JSON_UNESCAPED_UNICODE
-                );
-            } else {
-                http_response_code(500);
-                echo json_encode(
-                    array(
-                        'error' => 'Database error: ' . $result['error'],
-                        'code' => $result['error_code']
-                    ),
-                    JSON_PRETTY_PRINT
-                );
-            }
+            // Return the array directly
+            echo json_encode(
+                $resources,
+                JSON_PRETTY_PRINT | 
+                JSON_UNESCAPED_SLASHES | 
+                JSON_UNESCAPED_UNICODE
+            );
+            
         } catch (Exception $e) {
             error_log("Server error: " . $e->getMessage());
             http_response_code(500);
             echo json_encode(
                 array(
-                    'error' => 'Server error: ' . $e->getMessage(),
-                    'code' => $e->getCode()
+                    'error' => 'Server error: ' . $e->getMessage()
                 ),
                 JSON_PRETTY_PRINT
             );

@@ -13,6 +13,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
+  const [systemStatus, setSystemStatus] = useState({ ok: false, message: 'Checking system status...' });
 
   useEffect(() => {
     loadResources();
@@ -21,16 +22,18 @@ function App() {
   const loadResources = async () => {
     try {
       setLoading(true);
-      setError(null); // Clear any previous errors
+      setError(null);
       console.log('Loading resources for category:', activeCategory);
       
       const data = await fetchResources(activeCategory === 'all' ? undefined : activeCategory);
       console.log('Received resources:', data);
       
       setResources(data);
+      setSystemStatus({ ok: true, message: `System running OK - ${data.length} resources loaded` });
     } catch (err) {
       console.error('Error in loadResources:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load resources. Please try again later.');
+      setError(err instanceof Error ? err.message : 'Failed to load resources');
+      setSystemStatus({ ok: false, message: 'System error - Failed to load resources' });
     } finally {
       setLoading(false);
     }
@@ -63,36 +66,6 @@ function App() {
         return category.charAt(0).toUpperCase() + category.slice(1);
     }
   };
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-100 py-8 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-white rounded-lg p-6 shadow">
-            <h2 className="text-xl font-semibold text-red-600 mb-4">Error Loading Resources</h2>
-            <p className="text-gray-700 mb-4">{error}</p>
-            <div className="flex gap-4">
-              <button 
-                onClick={loadResources}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-              >
-                Retry
-              </button>
-              <button
-                onClick={() => {
-                  setActiveCategory('all');
-                  setSearchQuery('');
-                }}
-                className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
-              >
-                Reset Filters
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4">
@@ -149,6 +122,24 @@ function App() {
               )
             ))
           )}
+          
+          {/* System Status Indicator */}
+          <div className={`fixed bottom-0 left-0 right-0 p-2 text-center text-sm ${
+            systemStatus.ok ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+          }`}>
+            <span className="inline-block mr-2">
+              {systemStatus.ok ? '✓' : '⚠️'}
+            </span>
+            {systemStatus.message}
+            {!systemStatus.ok && (
+              <button
+                onClick={loadResources}
+                className="ml-4 px-2 py-1 bg-yellow-200 rounded hover:bg-yellow-300 transition-colors"
+              >
+                Retry
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

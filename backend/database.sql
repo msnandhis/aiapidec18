@@ -1,7 +1,5 @@
--- Create the resources database
-CREATE DATABASE IF NOT EXISTS 
-;
-USE resources_db;
+-- Use the correct database
+USE rigazamy_AAKit;
 
 -- Create the categories table
 CREATE TABLE categories (
