@@ -1,89 +1,122 @@
 <?php
-require_once 'config.php';
+header('Content-Type: application/json');
 
-function runTests() {
-    echo "Starting system tests...\n\n";
-    
-    try {
-        // Test 1: Database Connection
-        echo "Test 1: Testing Database Connection\n";
-        $conn = getConnection();
-        echo "✓ Database connection successful\n\n";
-        
-        // Test 2: Check Tables
-        echo "Test 2: Checking Required Tables\n";
-        $tables = $conn->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
-        
-        $requiredTables = ['categories', 'resources'];
-        foreach ($requiredTables as $table) {
-            if (in_array($table, $tables)) {
-                echo "✓ Table '$table' exists\n";
-            } else {
-                echo "✗ Table '$table' is missing\n";
+$requirements = [
+    'php_version' => [
+        'required' => '7.4.0',
+        'current' => PHP_VERSION,
+        'status' => version_compare(PHP_VERSION, '7.4.0', '>=')
+    ],
+    'extensions' => [
+        'pdo' => [
+            'required' => true,
+            'current' => extension_loaded('pdo'),
+            'status' => extension_loaded('pdo')
+        ],
+        'pdo_mysql' => [
+            'required' => true,
+            'current' => extension_loaded('pdo_mysql'),
+            'status' => extension_loaded('pdo_mysql')
+        ],
+        'json' => [
+            'required' => true,
+            'current' => extension_loaded('json'),
+            'status' => extension_loaded('json')
+        ],
+        'mbstring' => [
+            'required' => true,
+            'current' => extension_loaded('mbstring'),
+            'status' => extension_loaded('mbstring')
+        ]
+    ],
+    'settings' => [
+        'file_uploads' => [
+            'required' => true,
+            'current' => ini_get('file_uploads'),
+            'status' => ini_get('file_uploads') == 1
+        ],
+        'post_max_size' => [
+            'required' => '8M',
+            'current' => ini_get('post_max_size'),
+            'status' => intval(ini_get('post_max_size')) >= 8
+        ],
+        'upload_max_filesize' => [
+            'required' => '8M',
+            'current' => ini_get('upload_max_filesize'),
+            'status' => intval(ini_get('upload_max_filesize')) >= 8
+        ],
+        'max_execution_time' => [
+            'required' => '30',
+            'current' => ini_get('max_execution_time'),
+            'status' => ini_get('max_execution_time') >= 30
+        ]
+    ],
+    'directories' => [
+        'uploads' => [
+            'path' => __DIR__ . '/uploads',
+            'exists' => is_dir(__DIR__ . '/uploads'),
+            'writable' => is_writable(__DIR__ . '/uploads'),
+            'status' => is_dir(__DIR__ . '/uploads') && is_writable(__DIR__ . '/uploads')
+        ],
+        'uploads_logos' => [
+            'path' => __DIR__ . '/uploads/logos',
+            'exists' => is_dir(__DIR__ . '/uploads/logos'),
+            'writable' => is_writable(__DIR__ . '/uploads/logos'),
+            'status' => is_dir(__DIR__ . '/uploads/logos') && is_writable(__DIR__ . '/uploads/logos')
+        ],
+        'uploads_temp' => [
+            'path' => __DIR__ . '/uploads/temp',
+            'exists' => is_dir(__DIR__ . '/uploads/temp'),
+            'writable' => is_writable(__DIR__ . '/uploads/temp'),
+            'status' => is_dir(__DIR__ . '/uploads/temp') && is_writable(__DIR__ . '/uploads/temp')
+        ]
+    ],
+    'env_file' => [
+        'exists' => file_exists(__DIR__ . '/.env'),
+        'readable' => is_readable(__DIR__ . '/.env'),
+        'status' => file_exists(__DIR__ . '/.env') && is_readable(__DIR__ . '/.env')
+    ]
+];
+
+// Check if all requirements are met
+$all_requirements_met = true;
+foreach ($requirements as $category => $checks) {
+    if (is_array($checks)) {
+        foreach ($checks as $check) {
+            if (isset($check['status']) && $check['status'] === false) {
+                $all_requirements_met = false;
+                break 2;
             }
         }
-        echo "\n";
-        
-        // Test 3: Check Categories
-        echo "Test 3: Checking Categories\n";
-        $stmt = $conn->query("SELECT * FROM categories");
-        $categories = $stmt->fetchAll();
-        
-        if (count($categories) > 0) {
-            echo "✓ Found " . count($categories) . " categories:\n";
-            foreach ($categories as $category) {
-                echo "  - {$category['id']}: {$category['label']}\n";
-            }
-        } else {
-            echo "✗ No categories found in the database\n";
-        }
-        echo "\n";
-        
-        // Test 4: Check Resources
-        echo "Test 4: Checking Resources\n";
-        $stmt = $conn->query("SELECT * FROM resources");
-        $resources = $stmt->fetchAll();
-        
-        if (count($resources) > 0) {
-            echo "✓ Found " . count($resources) . " resources\n";
-            echo "Sample resources:\n";
-            for ($i = 0; $i < min(3, count($resources)); $i++) {
-                echo "  - {$resources[$i]['name']} ({$resources[$i]['category_id']})\n";
-            }
-        } else {
-            echo "✗ No resources found in the database\n";
-        }
-        echo "\n";
-        
-        // Test 5: Test API Endpoint
-        echo "Test 5: Testing API Endpoint\n";
-        $ch = curl_init('http://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . '/api/resources.php');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        
-        if ($httpCode === 200) {
-            echo "✓ API endpoint is responding\n";
-            $data = json_decode($response, true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                echo "✓ API returns valid JSON\n";
-            } else {
-                echo "✗ API response is not valid JSON\n";
-            }
-        } else {
-            echo "✗ API endpoint returned status code: $httpCode\n";
-        }
-        
-    } catch (Exception $e) {
-        echo "Error during tests: " . $e->getMessage() . "\n";
-        echo "Error code: " . $e->getCode() . "\n";
-        if (method_exists($e, 'getTraceAsString')) {
-            echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
-        }
+    } elseif (isset($checks['status']) && $checks['status'] === false) {
+        $all_requirements_met = false;
+        break;
     }
 }
 
-// Run the tests
-runTests();
-?>
+// Add database connection test
+try {
+    require_once 'config.php';
+    $conn = getConnection();
+    $stmt = $conn->query("SELECT 1");
+    $requirements['database'] = [
+        'connected' => true,
+        'error' => null
+    ];
+} catch (Exception $e) {
+    $requirements['database'] = [
+        'connected' => false,
+        'error' => $e->getMessage()
+    ];
+    $all_requirements_met = false;
+}
+
+// Prepare response
+$response = [
+    'success' => $all_requirements_met,
+    'message' => $all_requirements_met ? 'All system requirements are met' : 'Some system requirements are not met',
+    'requirements' => $requirements
+];
+
+// Send response
+echo json_encode($response, JSON_PRETTY_PRINT);

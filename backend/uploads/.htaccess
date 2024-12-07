@@ -1,0 +1,25 @@
+# Deny access to all file types except images
+<FilesMatch "(?i)\.(php|php3?|phtml|js|jsp|asp|aspx|cgi|pl)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Allow access to image files
+<FilesMatch "(?i)\.(gif|jpe?g|png|ico|webp|svg)$">
+    Order allow,deny
+    Allow from all
+</FilesMatch>
+
+# Prevent directory listing
+Options -Indexes
+
+# Protect against script execution
+SetHandler none
+SetHandler default-handler
+
+# Disable PHP execution in this directory
+php_flag engine off
+
+# Additional security headers
+Header set X-Content-Type-Options "nosniff"
+Header set X-Frame-Options "SAMEORIGIN"

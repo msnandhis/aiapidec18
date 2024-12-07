@@ -1,42 +1,47 @@
 import React from 'react';
-import { Info, ExternalLink } from 'lucide-react';
 import { Resource } from '../types';
 
-interface ResourceCardProps {
+export interface ResourceCardProps {
   resource: Resource;
+  onClick: () => void;
 }
 
-export function ResourceCard({ resource }: ResourceCardProps) {
+export function ResourceCard({ resource, onClick }: ResourceCardProps) {
   return (
-    <div className="bg-white rounded-lg border p-4 hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div
+      onClick={onClick}
+      className="bg-gray-800 rounded-xl p-6 border border-gray-700 hover:border-blue-500/50 
+                 transition-all duration-300 cursor-pointer"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-xl font-semibold text-gray-100">{resource.name}</h3>
+          <p className="text-sm text-gray-400 mt-1">{resource.category}</p>
+        </div>
+        {resource.logo && (
           <img
             src={resource.logo}
             alt={`${resource.name} logo`}
-            className="w-10 h-10 object-contain"
+            className="w-12 h-12 object-contain rounded-lg"
           />
-          <h3 className="font-medium text-gray-900">{resource.name}</h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            title="View details"
-            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
-          >
-            <Info size={18} />
-          </button>
-          {resource.url && (
-            <a
-              href={resource.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
-            >
-              <ExternalLink size={18} />
-            </a>
-          )}
-        </div>
+        )}
       </div>
+      {resource.description && (
+        <p className="mt-4 text-gray-300 text-sm line-clamp-3">{resource.description}</p>
+      )}
+      {resource.url && (
+        <div className="mt-4">
+          <a
+            href={resource.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-300 text-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Visit Website →
+          </a>
+        </div>
+      )}
     </div>
   );
 }

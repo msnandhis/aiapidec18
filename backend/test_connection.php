@@ -1,27 +1,38 @@
 <?php
-// Database configuration for Bluehost
-$host = 'localhost';
-$dbname = 'rigazamy_AAKit';
-$username = 'rigazamy_AAKit_User';
-$password = 'gi&ij*UdnQ^h';
+require_once 'config.php';
 
 try {
-    // Attempt MySQL connection
-    $conn = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
+    // Get database connection
+    $conn = getConnection();
     
-    // Set PDO error mode to exception
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    // Test the connection
+    $stmt = $conn->query("SELECT 1");
     
-    echo "Connected successfully to MySQL database!<br>";
+    // Send success response
+    echo json_encode([
+        'success' => true,
+        'message' => 'Database connection successful',
+        'database' => [
+            'host' => DB_HOST,
+            'name' => DB_NAME,
+            'user' => DB_USER,
+            'connected' => true
+        ]
+    ]);
+} catch (Exception $e) {
+    // Log the error
+    error_log("Test connection error: " . $e->getMessage());
     
-    // Test query to check if we can read data
-    $stmt = $conn->query("SHOW TABLES");
-    echo "<br>Available tables:<br>";
-    while ($row = $stmt->fetch()) {
-        echo $row[0] . "<br>";
-    }
-    
-} catch(PDOException $e) {
-    echo "Connection failed: " . $e->getMessage();
+    // Send error response
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Database connection failed',
+        'database' => [
+            'host' => DB_HOST,
+            'name' => DB_NAME,
+            'user' => DB_USER,
+            'connected' => false
+        ]
+    ]);
 }
-?>
