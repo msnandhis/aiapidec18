@@ -1,163 +1,143 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 
-export function SetupPage() {
+export default function SetupPage() {
+  const navigate = useNavigate();
   const { initialSetup } = useAuth();
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
+  const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
 
-    if (password !== confirmPassword) {
+    if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long');
-      return;
-    }
+    setIsLoading(true);
 
     try {
-      setError('');
-      setIsLoading(true);
-      await initialSetup(name, email, password);
+      await initialSetup(formData.name, formData.email, formData.password);
+      navigate('/admin');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create admin account');
+      setError(err instanceof Error ? err.message : 'Failed to complete setup');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({
+      ...prev,
+      [e.target.name]: e.target.value
+    }));
+  };
+
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <div className="w-16 h-16 rounded-xl bg-gradient-to-r from-blue-600 to-blue-400 
-                       flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <span className="text-3xl font-bold text-white">A</span>
-          </div>
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
+      <div className="max-w-md w-full space-y-8">
+        <div>
+          <h2 className="text-3xl font-bold text-center text-gray-100">
+            Initial Setup
+          </h2>
+          <p className="mt-2 text-center text-gray-400">
+            Create your admin account to get started
+          </p>
         </div>
-        <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-100">
-          Initial Admin Setup
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-400">
-          Create your admin account to get started
-        </p>
-      </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-gray-800 py-8 px-4 shadow-xl rounded-lg sm:px-10 border border-gray-700">
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4">
-                <p className="text-sm text-red-400">{error}</p>
-              </div>
-            )}
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4">
+              <p className="text-sm text-red-400">{error}</p>
+            </div>
+          )}
 
+          <div className="space-y-4">
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-300">
-                Full Name
+                Name
               </label>
-              <div className="mt-1">
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
-                           text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500
-                           focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                value={formData.name}
+                onChange={handleChange}
+                required
+                className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                         text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
             </div>
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-300">
-                Email address
+                Email
               </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
-                           text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500
-                           focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                         text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-300">
                 Password
               </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
-                           text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500
-                           focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                         text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
             </div>
 
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300">
                 Confirm Password
               </label>
-              <div className="mt-1">
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
-                           text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500
-                           focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                required
+                className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                         text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
             </div>
+          </div>
 
-            <div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg
-                         text-sm font-medium text-white bg-blue-600 hover:bg-blue-500
-                         focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
-                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-              >
-                {isLoading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                    Creating account...
-                  </div>
-                ) : (
-                  'Create Admin Account'
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg
+                     text-sm font-medium text-white bg-blue-600 hover:bg-blue-700
+                     focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                     disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? 'Setting up...' : 'Complete Setup'}
+          </button>
+        </form>
       </div>
     </div>
   );

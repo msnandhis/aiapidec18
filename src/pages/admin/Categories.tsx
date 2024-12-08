@@ -1,71 +1,185 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, X } from 'lucide-react';
-import { Category } from '../../types';
+import { Plus, Edit2, Trash2, Check, X } from 'lucide-react';
 import { fetchCategories, createCategory, updateCategory, deleteCategory } from '../../services/api';
+import type { Category } from '../../types';
 
-function Categories() {
+interface EditingData {
+  label: string;
+  slug: string;
+}
+
+export default function Categories() {
   const [categories, setCategories] = useState<Category[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    id: '',
-    label: ''
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingData, setEditingData] = useState<EditingData>({
+    label: '',
+    slug: ''
   });
-
-  // Fetch categories
-  const loadCategories = async () => {
-    try {
-      setIsLoading(true);
-      const data = await fetchCategories();
-      setCategories(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [isAddingNew, setIsAddingNew] = useState(false);
 
   useEffect(() => {
     loadCategories();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
+  const loadCategories = async () => {
     try {
-      if (editingCategory) {
-        // Update existing category
-        await updateCategory(editingCategory.id, formData.label);
+      setIsLoading(true);
+      setError(null);
+      const response = await fetchCategories();
+      if (response.success) {
+        setCategories(response.data);
       } else {
-        // Create new category
-        await createCategory({
-          id: formData.id,
-          label: formData.label
-        });
+        throw new Error(response.message || 'Failed to load categories');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load categories');
+      setCategories([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    try {
+      setError(null);
+      if (!editingData.label.trim() || !editingData.slug.trim()) {
+        throw new Error('Label and slug are required');
       }
 
-      setIsModalOpen(false);
-      setEditingCategory(null);
-      setFormData({ id: '', label: '' });
-      loadCategories();
+      const response = await createCategory({
+        label: editingData.label.trim(),
+        slug: editingData.slug.trim()
+      });
+
+      if (response.success) {
+        setCategories(prev => [...prev, response.data]);
+        setIsAddingNew(false);
+        resetForm();
+      } else {
+        throw new Error(response.message || 'Failed to create category');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'Failed to create category');
+    }
+  };
+
+  const handleUpdate = async (id: string) => {
+    try {
+      setError(null);
+      if (!editingData.label.trim() || !editingData.slug.trim()) {
+        throw new Error('Label and slug are required');
+      }
+
+      const response = await updateCategory(id, {
+        label: editingData.label.trim(),
+        slug: editingData.slug.trim()
+      });
+
+      if (response.success) {
+        setCategories(prev => prev.map(category =>
+          category.id === id ? response.data : category
+        ));
+        setEditingId(null);
+        resetForm();
+      } else {
+        throw new Error(response.message || 'Failed to update category');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update category');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this category? This will affect all resources in this category.')) {
-      try {
-        await deleteCategory(id);
-        loadCategories();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
+    if (!window.confirm('Are you sure you want to delete this category? This will affect all resources in this category.')) {
+      return;
+    }
+
+    try {
+      setError(null);
+      const response = await deleteCategory(id);
+      if (response.success) {
+        setCategories(prev => prev.filter(category => category.id !== id));
+      } else {
+        throw new Error(response.message || 'Failed to delete category');
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete category');
     }
   };
+
+  const startEditing = (category: Category) => {
+    setEditingId(category.id);
+    setEditingData({
+      label: category.label,
+      slug: category.slug
+    });
+  };
+
+  const resetForm = () => {
+    setEditingData({
+      label: '',
+      slug: ''
+    });
+  };
+
+  const CategoryForm = ({ onSubmit, submitLabel }: { onSubmit: () => void, submitLabel: string }) => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">
+            Label
+          </label>
+          <input
+            type="text"
+            value={editingData.label}
+            onChange={(e) => setEditingData(prev => ({ ...prev, label: e.target.value }))}
+            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                     text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            placeholder="e.g., Machine Learning"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">
+            Slug
+          </label>
+          <input
+            type="text"
+            value={editingData.slug}
+            onChange={(e) => setEditingData(prev => ({ ...prev, slug: e.target.value }))}
+            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                     text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            placeholder="e.g., machine-learning"
+          />
+          <p className="mt-1 text-sm text-gray-400">
+            Used in URLs, should be lowercase with hyphens
+          </p>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={() => {
+            if (isAddingNew) setIsAddingNew(false);
+            else setEditingId(null);
+            resetForm();
+          }}
+          className="px-4 py-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 
+                   rounded-lg transition-colors duration-200"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onSubmit}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white 
+                   rounded-lg transition-colors duration-200"
+        >
+          {submitLabel}
+        </button>
+      </div>
+    </div>
+  );
 
   if (isLoading) {
     return (
@@ -77,23 +191,9 @@ function Categories() {
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-100">Categories</h1>
-          <p className="text-gray-400 mt-2">Manage resource categories</p>
-        </div>
-        <button
-          onClick={() => {
-            setEditingCategory(null);
-            setFormData({ id: '', label: '' });
-            setIsModalOpen(true);
-          }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 
-                   transition-colors duration-200 flex items-center gap-2"
-        >
-          <Plus size={20} />
-          Add Category
-        </button>
+      <div>
+        <h1 className="text-3xl font-bold text-gray-100">Categories</h1>
+        <p className="text-gray-400 mt-2">Manage API categories</p>
       </div>
 
       {error && (
@@ -102,130 +202,72 @@ function Categories() {
         </div>
       )}
 
-      {/* Categories Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="space-y-4">
+        {/* Add New Category */}
+        {!isAddingNew && !editingId && (
+          <button
+            onClick={() => setIsAddingNew(true)}
+            className="flex items-center gap-2 text-blue-400 hover:text-blue-300"
+          >
+            <Plus size={16} />
+            <span>Add Category</span>
+          </button>
+        )}
+
+        {isAddingNew && (
+          <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+            <CategoryForm onSubmit={handleCreate} submitLabel="Create Category" />
+          </div>
+        )}
+
+        {/* Category List */}
         {categories.map((category) => (
           <div
             key={category.id}
-            className="bg-gray-800 rounded-xl p-6 border border-gray-700 
-                     hover:border-blue-500/50 transition-all duration-300"
+            className="bg-gray-800 rounded-xl p-6 border border-gray-700"
           >
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-xl font-semibold text-gray-100">{category.label}</h3>
-                <p className="text-sm text-gray-400">ID: {category.id}</p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setEditingCategory(category);
-                    setFormData({ id: category.id, label: category.label });
-                    setIsModalOpen(true);
-                  }}
-                  className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 
-                           rounded-lg transition-colors duration-200"
-                >
-                  <Pencil size={16} />
-                </button>
-                <button
-                  onClick={() => handleDelete(category.id)}
-                  className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 
-                           rounded-lg transition-colors duration-200"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex-grow h-2 bg-gray-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-500"
-                  style={{ width: `${(category.resource_count / 20) * 100}%` }}
-                />
-              </div>
-              <span className="text-sm text-gray-400">
-                {category.resource_count} {category.resource_count === 1 ? 'resource' : 'resources'}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md relative">
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-300"
-            >
-              <X size={20} />
-            </button>
-
-            <h2 className="text-xl font-semibold text-gray-100 mb-4">
-              {editingCategory ? 'Edit Category' : 'Add Category'}
-            </h2>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {!editingCategory && (
+            {editingId === category.id ? (
+              <CategoryForm onSubmit={() => handleUpdate(category.id)} submitLabel="Update Category" />
+            ) : (
+              <div className="flex justify-between items-start">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
-                    Category ID
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.id}
-                    onChange={(e) => setFormData({ ...formData, id: e.target.value.toLowerCase() })}
-                    placeholder="e.g., frontend"
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
-                             text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                    required
-                    pattern="[a-z0-9-]+"
-                    title="Only lowercase letters, numbers, and dashes allowed"
-                  />
-                  <p className="mt-1 text-xs text-gray-400">
-                    Only lowercase letters, numbers, and dashes allowed
+                  <h3 className="text-xl font-semibold text-gray-100">
+                    {category.label}
+                  </h3>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Slug: {category.slug}
+                  </p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    {category.total_resources} resources
                   </p>
                 </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Display Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.label}
-                  onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-                  placeholder="e.g., Frontend Frameworks"
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
-                           text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                  required
-                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => startEditing(category)}
+                    className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 
+                             rounded-lg transition-colors duration-200"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(category.id)}
+                    className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 
+                             rounded-lg transition-colors duration-200"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
-
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-gray-300 hover:text-gray-200 transition-colors duration-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 
-                           transition-colors duration-200"
-                >
-                  {editingCategory ? 'Update' : 'Create'}
-                </button>
-              </div>
-            </form>
+            )}
           </div>
-        </div>
-      )}
+        ))}
+
+        {categories.length === 0 && !isAddingNew && (
+          <div className="text-center py-12">
+            <p className="text-gray-400">No categories found</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-
-export default Categories;

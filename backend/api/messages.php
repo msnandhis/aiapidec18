@@ -1,215 +1,203 @@
 <?php
-require_once '../config.php';
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/auth/auth_middleware.php';
 
-// Handle OPTIONS request
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
-}
+header('Content-Type: application/json');
+
+// Connect to database
+$conn = get_db_connection();
+
+// Handle different HTTP methods
+$method = $_SERVER['REQUEST_METHOD'];
 
 try {
-    $conn = getConnection();
-    
-    switch ($_SERVER['REQUEST_METHOD']) {
+    switch ($method) {
         case 'GET':
-            // Verify admin authentication
-            session_start();
-            if (!isset($_SESSION['user_id'])) {
+            // Verify admin is logged in for GET requests
+            $user = authenticate();
+            if (!$user) {
                 http_response_code(401);
-                echo json_encode(['error' => 'Unauthorized']);
+                echo json_encode(['success' => false, 'message' => 'Unauthorized']);
                 exit;
             }
 
             // Get query parameters
-            $status = isset($_GET['status']) ? $_GET['status'] : null;
-            $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-            $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
-            $offset = ($page - 1) * $limit;
-            
-            // Base query
+            $status = $_GET['status'] ?? null;
+            $page = max(1, intval($_GET['page'] ?? 1));
+            $per_page = 10;
+            $offset = ($page - 1) * $per_page;
+
+            // Build query
             $query = "SELECT * FROM messages";
-            $countQuery = "SELECT COUNT(*) FROM messages";
+            $countQuery = "SELECT COUNT(*) as total FROM messages";
             $params = [];
-            
-            // Add status filter if provided
-            if ($status && in_array($status, ['unread', 'read', 'replied'])) {
-                $query .= " WHERE status = :status";
-                $countQuery .= " WHERE status = :status";
-                $params[':status'] = $status;
+
+            if ($status) {
+                $query .= " WHERE status = ?";
+                $countQuery .= " WHERE status = ?";
+                $params[] = $status;
             }
-            
-            // Add sorting and pagination
-            $query .= " ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
-            
+
+            $query .= " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+            $params[] = $per_page;
+            $params[] = $offset;
+
             // Get total count
             $stmt = $conn->prepare($countQuery);
             if ($status) {
-                $stmt->bindParam(':status', $params[':status']);
+                $stmt->execute([$status]);
+            } else {
+                $stmt->execute();
             }
-            $stmt->execute();
-            $total = $stmt->fetchColumn();
-            
+            $total = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
+
             // Get messages
             $stmt = $conn->prepare($query);
-            if ($status) {
-                $stmt->bindParam(':status', $params[':status']);
-            }
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
-            $stmt->execute();
-            $messages = $stmt->fetchAll();
-            
+            $stmt->execute($params);
+            $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Calculate pagination
+            $total_pages = ceil($total / $per_page);
+
             echo json_encode([
                 'success' => true,
                 'data' => $messages,
                 'pagination' => [
-                    'total' => $total,
-                    'total_pages' => ceil($total / $limit),
+                    'total' => intval($total),
+                    'total_pages' => $total_pages,
                     'current_page' => $page,
-                    'per_page' => $limit
+                    'per_page' => $per_page
                 ]
             ]);
             break;
 
         case 'POST':
+            // Handle new message submission
             $data = json_decode(file_get_contents('php://input'), true);
-            
+
             // Validate required fields
             if (!isset($data['name']) || !isset($data['email']) || !isset($data['message'])) {
                 http_response_code(400);
-                echo json_encode(['error' => 'Missing required fields']);
-                exit;
-            }
-
-            // Validate email
-            if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-                http_response_code(400);
-                echo json_encode(['error' => 'Invalid email format']);
+                echo json_encode(['success' => false, 'message' => 'Name, email, and message are required']);
                 exit;
             }
 
             // Insert message
             $stmt = $conn->prepare("
-                INSERT INTO messages (
-                    id, name, email, message, status,
-                    created_at, updated_at
-                ) VALUES (
-                    :id, :name, :email, :message, 'unread',
-                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                )
+                INSERT INTO messages (id, name, email, message, status)
+                VALUES (UUID(), ?, ?, ?, 'unread')
             ");
 
-            $messageId = uniqid('msg_', true);
-            $stmt->execute([
-                'id' => $messageId,
-                'name' => $data['name'],
-                'email' => $data['email'],
-                'message' => $data['message']
+            $success = $stmt->execute([
+                $data['name'],
+                $data['email'],
+                $data['message']
             ]);
 
-            // Get the created message
-            $stmt = $conn->prepare("SELECT * FROM messages WHERE id = ?");
-            $stmt->execute([$messageId]);
-            $message = $stmt->fetch();
-
-            echo json_encode([
-                'success' => true,
-                'data' => $message
-            ]);
+            if ($success) {
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Message sent successfully'
+                ]);
+            } else {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'message' => 'Failed to send message']);
+            }
             break;
 
         case 'PUT':
-            // Verify admin authentication
-            session_start();
-            if (!isset($_SESSION['user_id'])) {
+            // Verify admin is logged in for PUT requests
+            $user = authenticate();
+            if (!$user) {
                 http_response_code(401);
-                echo json_encode(['error' => 'Unauthorized']);
+                echo json_encode(['success' => false, 'message' => 'Unauthorized']);
                 exit;
             }
 
-            if (!isset($_GET['id'])) {
+            // Update message status
+            $id = $_GET['id'] ?? null;
+            if (!$id) {
                 http_response_code(400);
-                echo json_encode(['error' => 'Message ID is required']);
+                echo json_encode(['success' => false, 'message' => 'Message ID is required']);
                 exit;
             }
 
             $data = json_decode(file_get_contents('php://input'), true);
-            $id = $_GET['id'];
-
-            // Validate status if provided
-            if (isset($data['status']) && !in_array($data['status'], ['unread', 'read', 'replied'])) {
+            
+            if (!isset($data['status']) || !in_array($data['status'], ['unread', 'read', 'replied'])) {
                 http_response_code(400);
-                echo json_encode(['error' => 'Invalid status']);
+                echo json_encode(['success' => false, 'message' => 'Valid status is required']);
                 exit;
             }
 
-            // Build update query dynamically
-            $updateFields = [];
-            $params = ['id' => $id];
+            $stmt = $conn->prepare("
+                UPDATE messages 
+                SET status = ?, admin_notes = ?
+                WHERE id = ?
+            ");
 
-            foreach ($data as $key => $value) {
-                if (in_array($key, ['status', 'admin_notes'])) {
-                    $updateFields[] = "$key = :$key";
-                    $params[$key] = $value;
-                }
-            }
-
-            if (empty($updateFields)) {
-                http_response_code(400);
-                echo json_encode(['error' => 'No valid fields to update']);
-                exit;
-            }
-
-            $updateFields[] = "updated_at = CURRENT_TIMESTAMP";
-            $query = "UPDATE messages SET " . implode(', ', $updateFields) . " WHERE id = :id";
-
-            $stmt = $conn->prepare($query);
-            $stmt->execute($params);
-
-            // Get the updated message
-            $stmt = $conn->prepare("SELECT * FROM messages WHERE id = ?");
-            $stmt->execute([$id]);
-            $message = $stmt->fetch();
-
-            echo json_encode([
-                'success' => true,
-                'data' => $message
+            $success = $stmt->execute([
+                $data['status'],
+                $data['admin_notes'] ?? null,
+                $id
             ]);
+
+            if ($success) {
+                // Get updated message
+                $stmt = $conn->prepare("SELECT * FROM messages WHERE id = ?");
+                $stmt->execute([$id]);
+                $message = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Message updated successfully',
+                    'data' => $message
+                ]);
+            } else {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'message' => 'Failed to update message']);
+            }
             break;
 
         case 'DELETE':
-            // Verify admin authentication
-            session_start();
-            if (!isset($_SESSION['user_id'])) {
+            // Verify admin is logged in for DELETE requests
+            $user = authenticate();
+            if (!$user) {
                 http_response_code(401);
-                echo json_encode(['error' => 'Unauthorized']);
+                echo json_encode(['success' => false, 'message' => 'Unauthorized']);
                 exit;
             }
 
-            if (!isset($_GET['id'])) {
+            $id = $_GET['id'] ?? null;
+            if (!$id) {
                 http_response_code(400);
-                echo json_encode(['error' => 'Message ID is required']);
+                echo json_encode(['success' => false, 'message' => 'Message ID is required']);
                 exit;
             }
 
-            $id = $_GET['id'];
-
-            // Delete message
             $stmt = $conn->prepare("DELETE FROM messages WHERE id = ?");
-            $stmt->execute([$id]);
+            $success = $stmt->execute([$id]);
 
-            echo json_encode([
-                'success' => true,
-                'message' => 'Message deleted successfully'
-            ]);
+            if ($success) {
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Message deleted successfully'
+                ]);
+            } else {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'message' => 'Failed to delete message']);
+            }
             break;
 
         default:
             http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
             break;
     }
 } catch (Exception $e) {
     error_log($e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => 'An error occurred']);
+    echo json_encode(['success' => false, 'message' => 'An error occurred']);
 }
+
+$conn = null;

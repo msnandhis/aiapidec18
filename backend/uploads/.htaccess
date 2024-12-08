@@ -1,25 +1,61 @@
 # Deny access to all file types except images
-<FilesMatch "(?i)\.(php|php3?|phtml|js|jsp|asp|aspx|cgi|pl)$">
-    Order allow,deny
-    Deny from all
-</FilesMatch>
+Order Deny,Allow
+Deny from all
 
-# Allow access to image files
-<FilesMatch "(?i)\.(gif|jpe?g|png|ico|webp|svg)$">
-    Order allow,deny
+<FilesMatch "(?i)\.(jpg|jpeg|png|gif|webp)$">
     Allow from all
 </FilesMatch>
 
-# Prevent directory listing
+# Prevent script execution
+<FilesMatch "(?i)\.(php|php3|php4|php5|phtml|pl|py|jsp|asp|htm|html|shtml|sh|cgi)$">
+    Deny from all
+</FilesMatch>
+
+# Enable CORS for image files
+<IfModule mod_headers.c>
+    <FilesMatch "(?i)\.(jpg|jpeg|png|gif|webp)$">
+        Header set Access-Control-Allow-Origin "*"
+    </FilesMatch>
+</IfModule>
+
+# Protect against hotlinking
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTP_REFERER} !^$
+    RewriteCond %{HTTP_REFERER} !^http(s)?://(www\.)?yourdomain.com [NC]
+    RewriteCond %{HTTP_REFERER} !^http(s)?://(www\.)?localhost [NC]
+    RewriteRule \.(jpg|jpeg|png|gif|webp)$ - [NC,F,L]
+</IfModule>
+
+# Improve caching for images
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+</IfModule>
+
+# Disable directory listing
 Options -Indexes
 
-# Protect against script execution
-SetHandler none
-SetHandler default-handler
-
-# Disable PHP execution in this directory
-php_flag engine off
-
-# Additional security headers
-Header set X-Content-Type-Options "nosniff"
-Header set X-Frame-Options "SAMEORIGIN"
+# Protect against malicious file uploads
+<FilesMatch "(?i)\.(php|php3|php4|php5|phtml|pl|py|jsp|asp|htm|html|shtml|sh|cgi)$">
+    SetHandler none
+    SetHandler default-handler
+    RemoveHandler .php
+    RemoveHandler .phtml
+    RemoveHandler .php3
+    RemoveHandler .php4
+    RemoveHandler .php5
+    RemoveHandler .pl
+    RemoveHandler .py
+    RemoveHandler .jsp
+    RemoveHandler .asp
+    RemoveHandler .htm
+    RemoveHandler .html
+    RemoveHandler .shtml
+    RemoveHandler .sh
+    RemoveHandler .cgi
+</FilesMatch>

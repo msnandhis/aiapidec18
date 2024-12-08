@@ -1,57 +1,84 @@
 import React, { useState, useEffect } from 'react';
+import { Check, X, Trash2, ExternalLink } from 'lucide-react';
 import { fetchSubmissions, updateSubmissionStatus, deleteSubmission } from '../../services/api';
-import { Check, X, Trash2, MessageCircle } from 'lucide-react';
-import { ApiSubmission } from '../../types';
-
-type Status = 'pending' | 'approved' | 'rejected';
-type EditingNotes = { id: string; notes: string };
+import { Pagination } from '../../components/Pagination';
+import type { Submission } from '../../types';
 
 export default function Submissions() {
-  const [submissions, setSubmissions] = useState<ApiSubmission[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedStatus, setSelectedStatus] = useState<Status | 'all'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [editingNotes, setEditingNotes] = useState<EditingNotes | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [editingNotes, setEditingNotes] = useState<{ [key: string]: string }>({});
+
+  useEffect(() => {
+    loadSubmissions();
+  }, [currentPage, selectedStatus]);
 
   const loadSubmissions = async () => {
     try {
       setIsLoading(true);
+      setError(null);
       const response = await fetchSubmissions(
         selectedStatus === 'all' ? undefined : selectedStatus,
         currentPage
       );
-      setSubmissions(response.data);
-      setTotalPages(response.pagination.total_pages);
+      if (response.success) {
+        setSubmissions(response.data);
+        setTotalPages(response.pagination?.total_pages || 1);
+      } else {
+        throw new Error(response.message || 'Failed to load submissions');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load submissions');
+      setSubmissions([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadSubmissions();
-  }, [selectedStatus, currentPage]);
-
-  const handleStatusChange = async (id: string, status: Status, notes?: string) => {
+  const handleStatusUpdate = async (
+    id: string, 
+    status: 'approved' | 'rejected',
+    notes?: string
+  ) => {
     try {
-      await updateSubmissionStatus(id, status, notes);
-      loadSubmissions();
+      setError(null);
+      const response = await updateSubmissionStatus(id, status, notes);
+      if (response.success) {
+        setSubmissions(prev => prev.map(submission =>
+          submission.id === id ? { ...submission, status, admin_notes: notes } : submission
+        ));
+        setEditingNotes(prev => {
+          const newNotes = { ...prev };
+          delete newNotes[id];
+          return newNotes;
+        });
+      } else {
+        throw new Error(response.message || 'Failed to update submission status');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update status');
+      setError(err instanceof Error ? err.message : 'Failed to update submission status');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this submission?')) {
-      try {
-        await deleteSubmission(id);
-        loadSubmissions();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to delete submission');
+    if (!window.confirm('Are you sure you want to delete this submission?')) {
+      return;
+    }
+
+    try {
+      setError(null);
+      const response = await deleteSubmission(id);
+      if (response.success) {
+        setSubmissions(prev => prev.filter(submission => submission.id !== id));
+      } else {
+        throw new Error(response.message || 'Failed to delete submission');
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete submission');
     }
   };
 
@@ -67,7 +94,7 @@ export default function Submissions() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold text-gray-100">API Submissions</h1>
-        <p className="text-gray-400 mt-2">Review and manage submitted APIs</p>
+        <p className="text-gray-400 mt-2">Review and manage API submissions</p>
       </div>
 
       {error && (
@@ -76,8 +103,7 @@ export default function Submissions() {
         </div>
       )}
 
-      {/* Status Filter */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 mb-6">
         {(['all', 'pending', 'approved', 'rejected'] as const).map((status) => (
           <button
             key={status}
@@ -88,148 +114,146 @@ export default function Submissions() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200
                      ${selectedStatus === status
                        ? 'bg-blue-600 text-white'
-                       : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+                       : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700'
+                     }`}
           >
             {status.charAt(0).toUpperCase() + status.slice(1)}
           </button>
         ))}
       </div>
 
-      {/* Submissions List */}
       <div className="space-y-4">
         {submissions.map((submission) => (
           <div
             key={submission.id}
-            className="bg-gray-800 rounded-xl p-6 border border-gray-700"
+            className={`bg-gray-800 rounded-xl p-6 border ${
+              submission.status === 'pending'
+                ? 'border-yellow-500/50'
+                : submission.status === 'approved'
+                ? 'border-green-500/50'
+                : 'border-red-500/50'
+            }`}
           >
-            <div className="flex justify-between items-start gap-4">
-              <div>
-                <h3 className="text-xl font-semibold text-gray-100">{submission.toolName}</h3>
-                <p className="text-sm text-gray-400 mt-1">
-                  Submitted by {submission.name} ({submission.email})
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {submission.status === 'pending' && (
-                  <>
-                    <button
-                      onClick={() => handleStatusChange(submission.id, 'approved')}
-                      className="p-2 text-green-400 hover:text-green-300 hover:bg-green-500/10 
-                               rounded-lg transition-colors duration-200"
-                      title="Approve"
-                    >
-                      <Check size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleStatusChange(submission.id, 'rejected')}
-                      className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 
-                               rounded-lg transition-colors duration-200"
-                      title="Reject"
-                    >
-                      <X size={16} />
-                    </button>
-                  </>
-                )}
-                <button
-                  onClick={() => handleDelete(submission.id)}
-                  className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 
-                           rounded-lg transition-colors duration-200"
-                  title="Delete"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-
-            <p className="mt-4 text-gray-300">{submission.description}</p>
-            
-            <div className="mt-4">
-              <a
-                href={submission.apiLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 text-sm"
-              >
-                View API Documentation →
-              </a>
-            </div>
-
-            {/* Admin Notes */}
-            <div className="mt-4 pt-4 border-t border-gray-700">
-              {editingNotes?.id === submission.id ? (
-                <div className="space-y-2">
-                  <textarea
-                    value={editingNotes.notes}
-                    onChange={(e) => setEditingNotes({ 
-                      id: editingNotes.id, 
-                      notes: e.target.value 
-                    })}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
-                             text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                    rows={2}
-                    placeholder="Add admin notes..."
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={() => setEditingNotes(null)}
-                      className="px-3 py-1 text-gray-400 hover:text-gray-300"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleStatusChange(submission.id, submission.status, editingNotes.notes);
-                        setEditingNotes(null);
-                      }}
-                      className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-500"
-                    >
-                      Save Notes
-                    </button>
+            <div className="space-y-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-xl font-semibold text-gray-100">
+                      {submission.tool_name}
+                    </h3>
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      submission.status === 'pending'
+                        ? 'bg-yellow-500/10 text-yellow-400'
+                        : submission.status === 'approved'
+                        ? 'bg-green-500/10 text-green-400'
+                        : 'bg-red-500/10 text-red-400'
+                    }`}>
+                      {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
+                    </span>
                   </div>
+                  <p className="text-sm text-gray-400 mt-1">
+                    by {submission.name} ({submission.email})
+                  </p>
                 </div>
-              ) : (
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    {submission.adminNotes ? (
-                      <p className="text-gray-400 text-sm">{submission.adminNotes}</p>
-                    ) : (
-                      <p className="text-gray-500 text-sm italic">No admin notes</p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setEditingNotes({ 
-                      id: submission.id, 
-                      notes: submission.adminNotes || '' 
-                    })}
-                    className="p-1 text-gray-400 hover:text-gray-300"
-                    title="Edit Notes"
+                <div className="flex items-center gap-2">
+                  <a
+                    href={submission.api_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 
+                             rounded-lg transition-colors duration-200"
                   >
-                    <MessageCircle size={16} />
+                    <ExternalLink size={16} />
+                  </a>
+                  <button
+                    onClick={() => handleDelete(submission.id)}
+                    className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 
+                             rounded-lg transition-colors duration-200"
+                  >
+                    <Trash2 size={16} />
                   </button>
                 </div>
+              </div>
+
+              <p className="text-gray-300">{submission.description}</p>
+
+              {submission.status === 'pending' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                      Admin Notes
+                    </label>
+                    <textarea
+                      value={editingNotes[submission.id] || ''}
+                      onChange={(e) => setEditingNotes(prev => ({
+                        ...prev,
+                        [submission.id]: e.target.value
+                      }))}
+                      rows={2}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                               text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                      placeholder="Optional notes about this submission..."
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => handleStatusUpdate(
+                        submission.id,
+                        'rejected',
+                        editingNotes[submission.id]
+                      )}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 
+                               hover:bg-red-500/20 rounded-lg transition-colors duration-200"
+                    >
+                      <X size={16} />
+                      <span>Reject</span>
+                    </button>
+                    <button
+                      onClick={() => handleStatusUpdate(
+                        submission.id,
+                        'approved',
+                        editingNotes[submission.id]
+                      )}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-500/10 text-green-400 
+                               hover:bg-green-500/20 rounded-lg transition-colors duration-200"
+                    >
+                      <Check size={16} />
+                      <span>Approve</span>
+                    </button>
+                  </div>
+                </div>
               )}
+
+              {submission.admin_notes && (
+                <div className="mt-4 p-4 bg-gray-700/50 rounded-lg">
+                  <p className="text-sm font-medium text-gray-300">Admin Notes:</p>
+                  <p className="text-sm text-gray-400 mt-1">{submission.admin_notes}</p>
+                </div>
+              )}
+
+              <p className="text-sm text-gray-400">
+                Submitted: {new Date(submission.created_at).toLocaleString()}
+              </p>
             </div>
           </div>
         ))}
-      </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-8">
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-            <button
-              key={page}
-              onClick={() => setCurrentPage(page)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200
-                       ${currentPage === page
-                         ? 'bg-blue-600 text-white'
-                         : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
-            >
-              {page}
-            </button>
-          ))}
-        </div>
-      )}
+        {submissions.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-gray-400">No submissions found</p>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="mt-8">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

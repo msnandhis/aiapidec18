@@ -1,82 +1,77 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { HelmetProvider } from 'react-helmet-async';
-import { ResourcesPage } from './pages/resources/ResourcesPage';
-import { AboutPage } from './pages/static/AboutPage';
-import { ContactPage } from './pages/static/ContactPage';
-import { PrivacyPage } from './pages/static/PrivacyPage';
-import { TermsPage } from './pages/static/TermsPage';
-import { ScrollToTop } from './shared/components/ScrollToTop';
-import { AuthProvider, RequireAuth } from './contexts/AuthContext';
-import { LoginPage } from './pages/admin/auth/LoginPage';
-import { SetupPage } from './pages/admin/auth/SetupPage';
+import React, { Suspense } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { AuthProvider } from './contexts/AuthContext';
 
-// Lazy load admin routes for better initial load performance
+// Pages
+const ResourcesPage = React.lazy(() => import('./pages/resources/ResourcesPage').then(module => ({ default: module.ResourcesPage })));
+const AboutPage = React.lazy(() => import('./pages/static/AboutPage').then(module => ({ default: module.AboutPage })));
+const ContactPage = React.lazy(() => import('./pages/static/ContactPage').then(module => ({ default: module.ContactPage })));
+const PrivacyPage = React.lazy(() => import('./pages/static/PrivacyPage').then(module => ({ default: module.PrivacyPage })));
+const TermsPage = React.lazy(() => import('./pages/static/TermsPage').then(module => ({ default: module.TermsPage })));
+
+// Admin Pages
 const AdminLayout = React.lazy(() => import('./pages/admin/AdminLayout'));
-const AdminDashboard = React.lazy(() => import('./pages/admin/Dashboard'));
-const AdminResources = React.lazy(() => import('./pages/admin/Resources'));
-const AdminCategories = React.lazy(() => import('./pages/admin/Categories'));
-const AdminUsers = React.lazy(() => import('./pages/admin/Users'));
-const AdminSubmissions = React.lazy(() => import('./pages/admin/Submissions'));
-const AdminMessages = React.lazy(() => import('./pages/admin/Messages'));
+const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
+const Resources = React.lazy(() => import('./pages/admin/Resources'));
+const Categories = React.lazy(() => import('./pages/admin/Categories'));
+const Submissions = React.lazy(() => import('./pages/admin/Submissions'));
+const Messages = React.lazy(() => import('./pages/admin/Messages'));
+const Users = React.lazy(() => import('./pages/admin/Users'));
 
-// Loading component for lazy-loaded routes
-function LoadingFallback() {
-  return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-      <div className="flex flex-col items-center space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    </div>
-  );
-}
+// Auth Pages
+const LoginPage = React.lazy(() => import('./pages/admin/auth/LoginPage').then(module => ({ default: module.default })));
+const SetupPage = React.lazy(() => import('./pages/admin/auth/SetupPage').then(module => ({ default: module.default })));
+
+// Loading Component
+const LoadingFallback = () => (
+  <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+  </div>
+);
+
+// Admin Layout Wrapper
+const AdminLayoutWrapper = () => (
+  <AdminLayout>
+    <Outlet />
+  </AdminLayout>
+);
 
 function App() {
   return (
-    <HelmetProvider>
-      <BrowserRouter>
+    <ErrorBoundary>
+      <Router>
         <AuthProvider>
-          <ScrollToTop />
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<ResourcesPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/contact" element={<ContactPage />} />
-            <Route path="/privacy" element={<PrivacyPage />} />
-            <Route path="/terms" element={<TermsPage />} />
-            
-            {/* Auth Routes */}
-            <Route path="/admin/login" element={<LoginPage />} />
-            <Route path="/admin/setup" element={<SetupPage />} />
-            
-            {/* Protected Admin Routes */}
-            <Route
-              path="/admin/*"
-              element={
-                <RequireAuth>
-                  <React.Suspense fallback={<LoadingFallback />}>
-                    <AdminLayout>
-                      <Routes>
-                        <Route index element={<AdminDashboard />} />
-                        <Route path="resources" element={<AdminResources />} />
-                        <Route path="categories" element={<AdminCategories />} />
-                        <Route path="users" element={<AdminUsers />} />
-                        <Route path="submissions" element={<AdminSubmissions />} />
-                        <Route path="messages" element={<AdminMessages />} />
-                      </Routes>
-                    </AdminLayout>
-                  </React.Suspense>
-                </RequireAuth>
-              }
-            />
+          <Suspense fallback={<LoadingFallback />}>
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/" element={<ResourcesPage />} />
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="/contact" element={<ContactPage />} />
+              <Route path="/privacy" element={<PrivacyPage />} />
+              <Route path="/terms" element={<TermsPage />} />
 
-            {/* Catch all route */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              {/* Admin Auth Routes */}
+              <Route path="/admin/login" element={<LoginPage />} />
+              <Route path="/admin/setup" element={<SetupPage />} />
+
+              {/* Admin Routes */}
+              <Route path="/admin" element={<AdminLayoutWrapper />}>
+                <Route index element={<Dashboard />} />
+                <Route path="resources" element={<Resources />} />
+                <Route path="categories" element={<Categories />} />
+                <Route path="submissions" element={<Submissions />} />
+                <Route path="messages" element={<Messages />} />
+                <Route path="users" element={<Users />} />
+              </Route>
+
+              {/* Catch all route */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </AuthProvider>
-      </BrowserRouter>
-    </HelmetProvider>
+      </Router>
+    </ErrorBoundary>
   );
 }
 

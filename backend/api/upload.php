@@ -1,167 +1,82 @@
 <?php
-require_once '../config.php';
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/auth/auth_middleware.php';
 
-// Handle OPTIONS request
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
+header('Content-Type: application/json');
+
+// Verify admin is logged in
+$user = authenticate();
+if (!$user) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+    exit;
 }
 
 try {
-    // Verify admin authentication
-    session_start();
-    if (!isset($_SESSION['user_id'])) {
-        http_response_code(401);
-        echo json_encode(['error' => 'Unauthorized']);
-        exit;
-    }
-
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        http_response_code(405);
-        echo json_encode(['error' => 'Method not allowed']);
-        exit;
+        throw new Exception('Method not allowed');
     }
 
-    // Check if file was uploaded
     if (!isset($_FILES['file'])) {
-        http_response_code(400);
-        echo json_encode(['error' => 'No file uploaded']);
-        exit;
+        throw new Exception('No file uploaded');
     }
 
     $file = $_FILES['file'];
-    $type = isset($_POST['type']) ? $_POST['type'] : 'logo';
+    $type = $_POST['type'] ?? 'logo';
+
+    // Validate file
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        throw new Exception('File upload failed');
+    }
 
     // Validate file type
-    $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!in_array($file['type'], $allowedTypes)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.']);
-        exit;
+    $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime_type = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+
+    if (!in_array($mime_type, $allowed_types)) {
+        throw new Exception('Invalid file type. Only images are allowed.');
     }
 
-    // Validate file size (max 5MB)
-    $maxSize = 5 * 1024 * 1024; // 5MB in bytes
-    if ($file['size'] > $maxSize) {
-        http_response_code(400);
-        echo json_encode(['error' => 'File size too large. Maximum size is 5MB.']);
-        exit;
+    // Validate file size (5MB max)
+    $max_size = 5 * 1024 * 1024;
+    if ($file['size'] > $max_size) {
+        throw new Exception('File too large. Maximum size is 5MB.');
     }
 
-    // Determine upload directory based on type
-    $uploadDir = '../uploads/';
-    switch ($type) {
-        case 'logo':
-            $uploadDir .= 'logos/';
-            break;
-        default:
-            $uploadDir .= 'temp/';
+    // Create upload directory if it doesn't exist
+    $upload_dir = __DIR__ . '/../uploads';
+    if ($type === 'logo') {
+        $upload_dir .= '/logos';
     }
 
-    // Create directory if it doesn't exist
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0777, true);
+    if (!file_exists($upload_dir)) {
+        mkdir($upload_dir, 0755, true);
     }
 
     // Generate unique filename
     $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-    $filename = uniqid() . '_' . time() . '.' . $extension;
-    $filepath = $uploadDir . $filename;
+    $filename = uniqid() . '.' . $extension;
+    $filepath = $upload_dir . '/' . $filename;
 
     // Move uploaded file
     if (!move_uploaded_file($file['tmp_name'], $filepath)) {
-        http_response_code(500);
-        echo json_encode(['error' => 'Failed to save file']);
-        exit;
+        throw new Exception('Failed to save file');
     }
 
-    // Process image
-    try {
-        // Load image based on type
-        switch ($file['type']) {
-            case 'image/jpeg':
-                $image = imagecreatefromjpeg($filepath);
-                break;
-            case 'image/png':
-                $image = imagecreatefrompng($filepath);
-                break;
-            case 'image/gif':
-                $image = imagecreatefromgif($filepath);
-                break;
-            case 'image/webp':
-                $image = imagecreatefromwebp($filepath);
-                break;
-            default:
-                throw new Exception('Unsupported image type');
-        }
+    // Set proper permissions
+    chmod($filepath, 0644);
 
-        // Get original dimensions
-        $width = imagesx($image);
-        $height = imagesy($image);
+    // Return relative path
+    $relative_path = str_replace(__DIR__ . '/..', '', $filepath);
 
-        // Calculate new dimensions (max 800x800)
-        $maxDimension = 800;
-        if ($width > $maxDimension || $height > $maxDimension) {
-            if ($width > $height) {
-                $newWidth = $maxDimension;
-                $newHeight = floor($height * ($maxDimension / $width));
-            } else {
-                $newHeight = $maxDimension;
-                $newWidth = floor($width * ($maxDimension / $height));
-            }
-        } else {
-            $newWidth = $width;
-            $newHeight = $height;
-        }
-
-        // Create new image
-        $newImage = imagecreatetruecolor($newWidth, $newHeight);
-
-        // Preserve transparency for PNG images
-        if ($file['type'] === 'image/png') {
-            imagealphablending($newImage, false);
-            imagesavealpha($newImage, true);
-        }
-
-        // Resize image
-        imagecopyresampled(
-            $newImage, $image,
-            0, 0, 0, 0,
-            $newWidth, $newHeight,
-            $width, $height
-        );
-
-        // Save processed image
-        switch ($file['type']) {
-            case 'image/jpeg':
-                imagejpeg($newImage, $filepath, 85);
-                break;
-            case 'image/png':
-                imagepng($newImage, $filepath, 8);
-                break;
-            case 'image/gif':
-                imagegif($newImage, $filepath);
-                break;
-            case 'image/webp':
-                imagewebp($newImage, $filepath, 85);
-                break;
-        }
-
-        // Clean up
-        imagedestroy($image);
-        imagedestroy($newImage);
-
-    } catch (Exception $e) {
-        error_log('Image processing error: ' . $e->getMessage());
-        // Continue without image processing if it fails
-    }
-
-    // Return success response with file info
     echo json_encode([
         'success' => true,
         'data' => [
+            'path' => $relative_path,
             'filename' => $filename,
-            'path' => '/backend/uploads/' . ($type === 'logo' ? 'logos/' : 'temp/') . $filename,
-            'type' => $file['type'],
+            'mime_type' => $mime_type,
             'size' => $file['size']
         ]
     ]);
@@ -169,5 +84,8 @@ try {
 } catch (Exception $e) {
     error_log($e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => 'An error occurred']);
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage()
+    ]);
 }

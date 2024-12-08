@@ -5,14 +5,13 @@ import { CategorySection } from '../../components/CategorySection';
 import { SearchBar } from '../../components/SearchBar';
 import { CategoryFilter } from '../../components/CategoryFilter';
 import { Pagination } from '../../components/Pagination';
-import { Resource } from '../../types';
 import { fetchResources, trackView } from '../../services/api';
+import type { Resource } from '../../types';
 
 export function ResourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [resources, setResources] = useState<Resource[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,16 +27,16 @@ export function ResourcesPage() {
     try {
       setIsLoading(true);
       const response = await fetchResources(selectedCategory || undefined, currentPage);
-      setResources(response.data);
-      setTotalPages(response.pagination.total_pages);
+      setResources(response.data || []);
+      setTotalPages(response.pagination?.total_pages || 1);
 
       // Track category view if selected
       if (selectedCategory) {
-        await trackView('category', selectedCategory);
+        trackView('category', selectedCategory).catch(console.error);
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to load resources');
       console.error('Error loading resources:', error);
+      setResources([]);
     } finally {
       setIsLoading(false);
     }
@@ -50,12 +49,12 @@ export function ResourcesPage() {
       searchParams.delete('category');
     }
     setSearchParams(searchParams);
-    setCurrentPage(1); // Reset to first page when changing category
+    setCurrentPage(1);
   };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    setCurrentPage(1); // Reset to first page when searching
+    setCurrentPage(1);
   };
 
   const handlePageChange = (page: number) => {
@@ -67,27 +66,24 @@ export function ResourcesPage() {
   const filteredResources = searchQuery
     ? resources.filter(resource =>
         resource.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        resource.description?.toLowerCase().includes(searchQuery.toLowerCase())
+        (resource.description?.toLowerCase() || '').includes(searchQuery.toLowerCase())
       )
     : resources;
 
   return (
     <MainLayout>
-      <div className="bg-gradient-to-b from-gray-900 to-gray-800 py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-blue-400 
-                       bg-clip-text text-transparent mb-6">
-            Discover API Kit Resources
-          </h1>
-          <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-            Directory of AI model APIs, curated by developers for developers. 
-            Discover the right tools for your next project.
-          </p>
-        </div>
-      </div>
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
+          <div className="text-center">
+            <h1 className="text-4xl font-bold text-gray-100 mb-4">
+              AI API Kit Resources
+            </h1>
+            <p className="text-xl text-gray-400 max-w-3xl mx-auto">
+              Directory of AI model APIs, curated by developers for developers. 
+              Discover the right tools for your next project.
+            </p>
+          </div>
+
           <SearchBar onSearch={handleSearch} />
           
           <CategoryFilter
@@ -95,22 +91,20 @@ export function ResourcesPage() {
             onSelectCategory={handleCategorySelect}
           />
 
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4">
-              <p className="text-sm text-red-400">{error}</p>
-            </div>
-          )}
-
           {isLoading ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            <div className="flex justify-center items-center h-32">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
           ) : (
             <>
               <CategorySection
                 resources={filteredResources}
                 onResourceClick={async (resourceId) => {
-                  await trackView('resource', resourceId);
+                  try {
+                    await trackView('resource', resourceId);
+                  } catch (error) {
+                    console.error('Failed to track view:', error);
+                  }
                 }}
               />
 

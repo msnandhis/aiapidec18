@@ -1,23 +1,10 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import './index.css';
-import { setupErrorHandlers } from './utils/errorHandler';
+// Global error handler
+const globalErrorHandler = (error: Error) => {
+  console.error('Unhandled error:', error);
 
-// Initialize error handlers
-setupErrorHandlers();
-
-// Create root with error handling
-const renderApp = () => {
-  try {
-    const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
-    root.render(
-      <React.StrictMode>
-        <App />
-      </React.StrictMode>
-    );
-  } catch (error) {
-    console.error('Failed to render app:', error);
+  // Check if we're in production
+  if (process.env.NODE_ENV === 'production') {
+    // In production, show a user-friendly error message
     const rootElement = document.getElementById('root');
     if (rootElement) {
       rootElement.innerHTML = `
@@ -25,10 +12,10 @@ const renderApp = () => {
           <div class="max-w-md w-full space-y-6 text-center">
             <div class="space-y-4">
               <h2 class="text-2xl font-bold text-gray-100">
-                Failed to Load Application
+                Oops! Something went wrong
               </h2>
               <p class="text-gray-400">
-                We're sorry, but the application failed to load. Please try refreshing the page.
+                We're sorry, but something unexpected happened. Please try refreshing the page.
               </p>
               <button 
                 onclick="window.location.reload()"
@@ -45,10 +32,16 @@ const renderApp = () => {
   }
 };
 
-// Start the app
-renderApp();
+// Set up global error handlers
+export const setupErrorHandlers = () => {
+  window.onerror = (message, source, lineno, colno, error) => {
+    if (error) {
+      globalErrorHandler(error);
+    }
+    return false;
+  };
 
-// Add hot module replacement support
-if (import.meta.hot) {
-  import.meta.hot.accept();
-}
+  window.onunhandledrejection = (event) => {
+    globalErrorHandler(event.reason);
+  };
+};

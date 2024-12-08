@@ -1,112 +1,68 @@
-// Resource Types
 export interface Resource {
   id: string;
   name: string;
-  category: string;
-  logo: string;
-  url?: string;
-  description?: string;
-  totalPages?: number;
-  currentPage?: number;
-  isFeatured?: boolean;
+  description: string;
+  url: string;
+  category_id: string;
+  category_name?: string;
+  logo?: string;
+  is_featured: boolean;
+  views: number;
+  created_at: string;
+  updated_at: string;
 }
 
-// Category Types
 export interface Category {
   id: string;
   label: string;
-  resource_count: number;
+  slug: string;
+  total_resources: number;
+  created_at: string;
+  updated_at: string;
 }
 
-// Admin Types
-export interface AdminUser {
+export interface User {
   id: string;
   name: string;
   email: string;
   role: 'admin' | 'super_admin';
-  lastLogin?: string;
+  last_login?: string;
+  created_at: string;
+  updated_at: string;
 }
 
-// Submission Types
-export interface ApiSubmission {
-  id: string;
-  name: string;
-  email: string;
-  toolName: string;
-  description: string;
-  apiLink: string;
-  status: SubmissionStatus;
-  adminNotes?: string;
-  createdAt: string;
-}
-
-export type SubmissionStatus = 'pending' | 'approved' | 'rejected';
-
-// Message Types
-export interface ContactMessage {
+export interface Message {
   id: string;
   name: string;
   email: string;
   message: string;
-  status: MessageStatus;
-  adminNotes?: string;
-  createdAt: string;
+  status: 'unread' | 'read' | 'replied';
+  admin_notes?: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export type MessageStatus = 'unread' | 'read' | 'replied';
-
-// Form Data Types
-export interface ApiSubmissionForm {
+export interface Submission {
+  id: string;
   name: string;
   email: string;
-  toolName: string;
+  tool_name: string;
   description: string;
-  apiLink: string;
+  api_link: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_notes?: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface ContactForm {
-  name: string;
-  email: string;
-  message: string;
-}
-
-// API Response Types
 export interface ApiResponse<T> {
   success: boolean;
-  data?: T;
-  error?: string;
-  errorCode?: string | number;
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  perPage: number;
-  totalPages: number;
-}
-
-// Admin Dashboard Types
-export interface DashboardStats {
-  totalResources: number;
-  totalCategories: number;
-  totalUsers: number;
-  pendingSubmissions: number;
-  unreadMessages: number;
-  recentActivity: ActivityItem[];
-}
-
-export interface ActivityItem {
-  id: string;
-  type: 'submission' | 'message' | 'resource' | 'user';
-  action: string;
-  user: string;
-  target: string;
-  timestamp: string;
-}
-
-// Config Types
-export interface SiteConfig {
-  turnstile_site_key: string;
-  turnstile_secret_key: string;
+  data: T;
+  message?: string;
+  pagination?: {
+    total: number;
+    total_pages: number;
+    current_page: number;
+    per_page: number;
+  };
 }

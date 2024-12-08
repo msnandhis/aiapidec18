@@ -1,73 +1,71 @@
 <?php
-require_once '../config.php';
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/auth/auth_middleware.php';
 
-// Handle OPTIONS request
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
-}
+header('Content-Type: application/json');
 
 try {
-    $conn = getConnection();
+    $conn = get_db_connection();
     
     switch ($_SERVER['REQUEST_METHOD']) {
         case 'GET':
             // Get query parameters
-            $category = isset($_GET['category']) ? $_GET['category'] : null;
-            $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-            $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
-            $offset = ($page - 1) * $limit;
+            $category = $_GET['category'] ?? null;
+            $page = max(1, intval($_GET['page'] ?? 1));
+            $per_page = 12;
+            $offset = ($page - 1) * $per_page;
             
             // Base query
             $query = "SELECT r.*, c.label as category_name 
                      FROM resources r 
                      LEFT JOIN categories c ON r.category_id = c.id";
             $countQuery = "SELECT COUNT(*) FROM resources r";
+            $params = [];
             
             // Add category filter if provided
             if ($category) {
-                $query .= " WHERE r.category_id = :category";
-                $countQuery .= " WHERE r.category_id = :category";
+                $query .= " WHERE r.category_id = ?";
+                $countQuery .= " WHERE r.category_id = ?";
+                $params[] = $category;
             }
             
-            // Add pagination
-            $query .= " ORDER BY r.created_at DESC LIMIT :limit OFFSET :offset";
+            // Add ordering and pagination
+            $query .= " ORDER BY r.is_featured DESC, r.created_at DESC LIMIT ? OFFSET ?";
+            $params[] = $per_page;
+            $params[] = $offset;
             
             // Get total count
             $stmt = $conn->prepare($countQuery);
             if ($category) {
-                $stmt->bindParam(':category', $category);
+                $stmt->execute([$category]);
+            } else {
+                $stmt->execute();
             }
-            $stmt->execute();
             $total = $stmt->fetchColumn();
             
             // Get resources
             $stmt = $conn->prepare($query);
-            if ($category) {
-                $stmt->bindParam(':category', $category);
-            }
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-            $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
-            $stmt->execute();
-            $resources = $stmt->fetchAll();
+            $stmt->execute($params);
+            $resources = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             echo json_encode([
                 'success' => true,
                 'data' => $resources,
                 'pagination' => [
-                    'total' => $total,
-                    'total_pages' => ceil($total / $limit),
+                    'total' => intval($total),
+                    'total_pages' => ceil($total / $per_page),
                     'current_page' => $page,
-                    'per_page' => $limit
+                    'per_page' => $per_page
                 ]
             ]);
             break;
 
         case 'POST':
-            // Verify admin authentication
-            session_start();
-            if (!isset($_SESSION['user_id'])) {
+            // Verify admin is logged in
+            $user = authenticate();
+            if (!$user) {
                 http_response_code(401);
-                echo json_encode(['error' => 'Unauthorized']);
+                echo json_encode(['success' => false, 'message' => 'Unauthorized']);
                 exit;
             }
 
@@ -76,22 +74,8 @@ try {
             // Validate required fields
             if (!isset($data['name']) || !isset($data['category_id'])) {
                 http_response_code(400);
-                echo json_encode(['error' => 'Missing required fields']);
+                echo json_encode(['success' => false, 'message' => 'Name and category are required']);
                 exit;
-            }
-
-            // Handle logo (can be URL or file upload)
-            $logo = null;
-            if (isset($data['logo_url'])) {
-                $logo = $data['logo_url'];
-            } elseif (isset($_FILES['logo'])) {
-                $uploadDir = '../uploads/logos/';
-                $fileName = uniqid() . '_' . basename($_FILES['logo']['name']);
-                $targetPath = $uploadDir . $fileName;
-                
-                if (move_uploaded_file($_FILES['logo']['tmp_name'], $targetPath)) {
-                    $logo = '/backend/uploads/logos/' . $fileName;
-                }
             }
 
             // Insert resource
@@ -100,21 +84,25 @@ try {
                     id, name, category_id, logo, url, description, is_featured, 
                     created_at, updated_at
                 ) VALUES (
-                    :id, :name, :category_id, :logo, :url, :description, :is_featured,
+                    UUID(), ?, ?, ?, ?, ?, ?,
                     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 )
             ");
 
-            $resourceId = uniqid('res_', true);
-            $stmt->execute([
-                'id' => $resourceId,
-                'name' => $data['name'],
-                'category_id' => $data['category_id'],
-                'logo' => $logo,
-                'url' => $data['url'] ?? null,
-                'description' => $data['description'] ?? null,
-                'is_featured' => $data['is_featured'] ?? false
+            $success = $stmt->execute([
+                $data['name'],
+                $data['category_id'],
+                $data['logo'] ?? null,
+                $data['url'] ?? null,
+                $data['description'] ?? null,
+                $data['is_featured'] ?? false
             ]);
+
+            if (!$success) {
+                throw new Exception('Failed to create resource');
+            }
+
+            $id = $conn->lastInsertId();
 
             // Get the created resource
             $stmt = $conn->prepare("
@@ -123,8 +111,8 @@ try {
                 LEFT JOIN categories c ON r.category_id = c.id 
                 WHERE r.id = ?
             ");
-            $stmt->execute([$resourceId]);
-            $resource = $stmt->fetch();
+            $stmt->execute([$id]);
+            $resource = $stmt->fetch(PDO::FETCH_ASSOC);
 
             echo json_encode([
                 'success' => true,
@@ -133,45 +121,50 @@ try {
             break;
 
         case 'PUT':
-            // Verify admin authentication
-            session_start();
-            if (!isset($_SESSION['user_id'])) {
+            // Verify admin is logged in
+            $user = authenticate();
+            if (!$user) {
                 http_response_code(401);
-                echo json_encode(['error' => 'Unauthorized']);
+                echo json_encode(['success' => false, 'message' => 'Unauthorized']);
                 exit;
             }
 
-            if (!isset($_GET['id'])) {
+            $id = $_GET['id'] ?? null;
+            if (!$id) {
                 http_response_code(400);
-                echo json_encode(['error' => 'Resource ID is required']);
+                echo json_encode(['success' => false, 'message' => 'Resource ID is required']);
                 exit;
             }
 
             $data = json_decode(file_get_contents('php://input'), true);
-            $id = $_GET['id'];
 
             // Build update query dynamically based on provided fields
             $updateFields = [];
-            $params = ['id' => $id];
+            $params = [];
 
             foreach ($data as $key => $value) {
                 if (in_array($key, ['name', 'category_id', 'logo', 'url', 'description', 'is_featured'])) {
-                    $updateFields[] = "$key = :$key";
-                    $params[$key] = $value;
+                    $updateFields[] = "$key = ?";
+                    $params[] = $value;
                 }
             }
 
             if (empty($updateFields)) {
                 http_response_code(400);
-                echo json_encode(['error' => 'No valid fields to update']);
+                echo json_encode(['success' => false, 'message' => 'No valid fields to update']);
                 exit;
             }
 
             $updateFields[] = "updated_at = CURRENT_TIMESTAMP";
-            $query = "UPDATE resources SET " . implode(', ', $updateFields) . " WHERE id = :id";
+            $params[] = $id; // Add ID for WHERE clause
 
+            $query = "UPDATE resources SET " . implode(', ', $updateFields) . " WHERE id = ?";
             $stmt = $conn->prepare($query);
-            $stmt->execute($params);
+            $success = $stmt->execute($params);
+
+            if (!$success) {
+                throw new Exception('Failed to update resource');
+            }
 
             // Get the updated resource
             $stmt = $conn->prepare("
@@ -181,7 +174,7 @@ try {
                 WHERE r.id = ?
             ");
             $stmt->execute([$id]);
-            $resource = $stmt->fetch();
+            $resource = $stmt->fetch(PDO::FETCH_ASSOC);
 
             echo json_encode([
                 'success' => true,
@@ -190,30 +183,29 @@ try {
             break;
 
         case 'DELETE':
-            // Verify admin authentication
-            session_start();
-            if (!isset($_SESSION['user_id'])) {
+            // Verify admin is logged in
+            $user = authenticate();
+            if (!$user) {
                 http_response_code(401);
-                echo json_encode(['error' => 'Unauthorized']);
+                echo json_encode(['success' => false, 'message' => 'Unauthorized']);
                 exit;
             }
 
-            if (!isset($_GET['id'])) {
+            $id = $_GET['id'] ?? null;
+            if (!$id) {
                 http_response_code(400);
-                echo json_encode(['error' => 'Resource ID is required']);
+                echo json_encode(['success' => false, 'message' => 'Resource ID is required']);
                 exit;
             }
-
-            $id = $_GET['id'];
 
             // Get resource info to delete logo file if exists
             $stmt = $conn->prepare("SELECT logo FROM resources WHERE id = ?");
             $stmt->execute([$id]);
-            $resource = $stmt->fetch();
+            $resource = $stmt->fetch(PDO::FETCH_ASSOC);
 
             // Delete logo file if it's a local file
-            if ($resource && $resource['logo'] && strpos($resource['logo'], '/backend/uploads/logos/') === 0) {
-                $logoPath = '../uploads/logos/' . basename($resource['logo']);
+            if ($resource && $resource['logo'] && strpos($resource['logo'], '/uploads/logos/') === 0) {
+                $logoPath = __DIR__ . '/../../' . $resource['logo'];
                 if (file_exists($logoPath)) {
                     unlink($logoPath);
                 }
@@ -221,7 +213,11 @@ try {
 
             // Delete resource
             $stmt = $conn->prepare("DELETE FROM resources WHERE id = ?");
-            $stmt->execute([$id]);
+            $success = $stmt->execute([$id]);
+
+            if (!$success) {
+                throw new Exception('Failed to delete resource');
+            }
 
             echo json_encode([
                 'success' => true,
@@ -231,11 +227,16 @@ try {
 
         default:
             http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
             break;
     }
 } catch (Exception $e) {
     error_log($e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => 'An error occurred']);
+    echo json_encode([
+        'success' => false,
+        'message' => 'An error occurred while processing your request'
+    ]);
 }
+
+$conn = null;

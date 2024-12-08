@@ -1,21 +1,19 @@
-# Protect .env file
-<Files .env>
-    Order allow,deny
-    Deny from all
-</Files>
-
-# Protect .htaccess file itself
-<Files .htaccess>
-    Order allow,deny
-    Deny from all
-</Files>
-
 # Enable rewrite engine
 RewriteEngine On
 
-# Handle CORS preflight requests
-RewriteCond %{REQUEST_METHOD} OPTIONS
-RewriteRule ^(.*)$ $1 [R=200,L]
+# Set security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    
+    # Enable CORS for API endpoints
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization"
+</IfModule>
 
 # Protect sensitive files
 <FilesMatch "^\.">
@@ -23,19 +21,50 @@ RewriteRule ^(.*)$ $1 [R=200,L]
     Deny from all
 </FilesMatch>
 
-# Allow PHP files to be executed
-<FilesMatch "\.php$">
+<FilesMatch "^(config\.php|\.env|\.htaccess)$">
     Order allow,deny
-    Allow from all
+    Deny from all
 </FilesMatch>
 
-# Set security headers
-Header set X-Content-Type-Options "nosniff"
-Header set X-XSS-Protection "1; mode=block"
-Header set X-Frame-Options "SAMEORIGIN"
-Header set Referrer-Policy "strict-origin-when-cross-origin"
+# Disable directory listing
+Options -Indexes
 
-# Enable CORS
-Header set Access-Control-Allow-Origin "*"
-Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-Header set Access-Control-Allow-Headers "Content-Type, Authorization"
+# Handle API requests
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^api/(.*)$ api/$1.php [QSA,L]
+
+# Block access to sensitive directories
+RewriteRule ^(\.git|\.vscode|node_modules) - [F,L]
+
+# Protect against common exploits
+<IfModule mod_rewrite.c>
+    RewriteCond %{QUERY_STRING} (\<|%3C).*script.*(\>|%3E) [NC,OR]
+    RewriteCond %{QUERY_STRING} GLOBALS(=|\[|\%[0-9A-Z]{0,2}) [OR]
+    RewriteCond %{QUERY_STRING} _REQUEST(=|\[|\%[0-9A-Z]{0,2})
+    RewriteRule .* index.php [F,L]
+</IfModule>
+
+# PHP settings
+<IfModule mod_php.c>
+    php_flag display_errors off
+    php_value upload_max_filesize 5M
+    php_value post_max_size 6M
+    php_flag magic_quotes_gpc off
+    php_flag register_globals off
+    php_flag session.auto_start off
+</IfModule>
+
+# Compress text files
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+    AddOutputFilterByType DEFLATE application/json
+</IfModule>

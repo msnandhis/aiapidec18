@@ -30,10 +30,12 @@ CREATE TABLE IF NOT EXISTS admin_users (
 CREATE TABLE IF NOT EXISTS categories (
     id VARCHAR(50) PRIMARY KEY,
     label VARCHAR(100) NOT NULL,
+    slug VARCHAR(100) NOT NULL,
     total_resources INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_label (label)
+    UNIQUE KEY unique_label (label),
+    UNIQUE KEY unique_slug (slug)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create resources table
@@ -41,7 +43,8 @@ CREATE TABLE IF NOT EXISTS resources (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     category_id VARCHAR(50) NOT NULL,
-    logo TEXT,
+    logo VARCHAR(255),           -- Store the path to the uploaded logo file
+    logo_url TEXT,              -- Store external logo URL if provided
     url TEXT NOT NULL,
     description TEXT,
     is_featured BOOLEAN DEFAULT FALSE,
@@ -91,16 +94,16 @@ CREATE TABLE IF NOT EXISTS page_stats (
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Insert default categories
-INSERT INTO categories (id, label) VALUES
-('ai_models', 'AI Models'),
-('image_generation', 'Image Generation'),
-('text_analysis', 'Text Analysis'),
-('speech_recognition', 'Speech Recognition'),
-('machine_learning', 'Machine Learning'),
-('natural_language', 'Natural Language'),
-('computer_vision', 'Computer Vision'),
-('chatbots', 'Chatbots & Assistants');
+-- Insert default categories with slugs
+INSERT INTO categories (id, label, slug) VALUES
+('ai_models', 'AI Models', 'ai-models'),
+('image_generation', 'Image Generation', 'image-generation'),
+('text_analysis', 'Text Analysis', 'text-analysis'),
+('speech_recognition', 'Speech Recognition', 'speech-recognition'),
+('machine_learning', 'Machine Learning', 'machine-learning'),
+('natural_language', 'Natural Language', 'natural-language'),
+('computer_vision', 'Computer Vision', 'computer-vision'),
+('chatbots', 'Chatbots & Assistants', 'chatbots-assistants');
 
 -- Create triggers to update category resource counts
 DELIMITER //
@@ -169,3 +172,4 @@ CREATE INDEX idx_admin_users_email ON admin_users(email);
 CREATE INDEX idx_page_stats_resource ON page_stats(resource_id);
 CREATE INDEX idx_page_stats_category ON page_stats(category_id);
 CREATE INDEX idx_page_stats_last_viewed ON page_stats(last_viewed);
+CREATE INDEX idx_categories_slug ON categories(slug);
