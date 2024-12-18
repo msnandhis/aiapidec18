@@ -1,7 +1,7 @@
 import React from 'react';
 import { MainLayout } from '../../shared/layouts/MainLayout';
 
-export function AboutPage() {
+export default function AboutPage() {
   return (
     <MainLayout>
       <div className="bg-gradient-to-b from-gray-900 to-gray-800 py-12">

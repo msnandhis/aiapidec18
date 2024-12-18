@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Check, X, Trash2, ExternalLink } from 'lucide-react';
-import { fetchSubmissions, updateSubmissionStatus, deleteSubmission } from '../../services/api';
+import { fetchSubmissions, updateSubmissionStatus, deleteSubmission, fetchCategories } from '../../services/api';
 import { Pagination } from '../../components/Pagination';
-import type { Submission } from '../../types';
+import type { Submission, Category } from '../../types';
 
 export default function Submissions() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [editingNotes, setEditingNotes] = useState<{ [key: string]: string }>({});
+  const [selectedCategories, setSelectedCategories] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     loadSubmissions();
+    loadCategories();
   }, [currentPage, selectedStatus]);
 
   const loadSubmissions = async () => {
@@ -39,6 +42,17 @@ export default function Submissions() {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      const response = await fetchCategories();
+      if (response.success) {
+        setCategories(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to load categories:', err);
+    }
+  };
+
   const handleStatusUpdate = async (
     id: string, 
     status: 'approved' | 'rejected',
@@ -46,7 +60,20 @@ export default function Submissions() {
   ) => {
     try {
       setError(null);
-      const response = await updateSubmissionStatus(id, status, notes);
+
+      // Require category selection when approving
+      if (status === 'approved' && !selectedCategories[id]) {
+        setError('Please select a category before approving');
+        return;
+      }
+
+      const response = await updateSubmissionStatus(
+        id, 
+        status, 
+        notes,
+        status === 'approved' ? selectedCategories[id] : undefined
+      );
+
       if (response.success) {
         setSubmissions(prev => prev.map(submission =>
           submission.id === id ? { ...submission, status, admin_notes: notes } : submission
@@ -55,6 +82,11 @@ export default function Submissions() {
           const newNotes = { ...prev };
           delete newNotes[id];
           return newNotes;
+        });
+        setSelectedCategories(prev => {
+          const newCategories = { ...prev };
+          delete newCategories[id];
+          return newCategories;
         });
       } else {
         throw new Error(response.message || 'Failed to update submission status');
@@ -179,6 +211,28 @@ export default function Submissions() {
 
               {submission.status === 'pending' && (
                 <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                      Category
+                    </label>
+                    <select
+                      value={selectedCategories[submission.id] || ''}
+                      onChange={(e) => setSelectedCategories(prev => ({
+                        ...prev,
+                        [submission.id]: e.target.value
+                      }))}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                               text-gray-200 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Select category</option>
+                      {categories.map(category => (
+                        <option key={category.id} value={category.id}>
+                          {category.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-1">
                       Admin Notes

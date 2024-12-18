@@ -8,7 +8,7 @@ import { Pagination } from '../../components/Pagination';
 import { fetchResources, trackView } from '../../services/api';
 import type { Resource } from '../../types';
 
-export function ResourcesPage() {
+function ResourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -124,3 +124,5 @@ export function ResourcesPage() {
     </MainLayout>
   );
 }
+
+export default ResourcesPage;

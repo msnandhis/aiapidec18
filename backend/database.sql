@@ -77,8 +77,10 @@ CREATE TABLE IF NOT EXISTS messages (
     message TEXT NOT NULL,
     status ENUM('unread', 'read', 'replied') NOT NULL DEFAULT 'unread',
     admin_notes TEXT,
+    ip_address VARCHAR(45),     -- Added for rate limiting (IPv6 support)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_ip_created (ip_address, created_at)  -- Index for rate limiting queries
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create page_stats table for tracking views and interactions

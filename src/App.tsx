@@ -1,40 +1,33 @@
 import React, { Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
 
 // Pages
-const ResourcesPage = React.lazy(() => import('./pages/resources/ResourcesPage').then(module => ({ default: module.ResourcesPage })));
-const AboutPage = React.lazy(() => import('./pages/static/AboutPage').then(module => ({ default: module.AboutPage })));
-const ContactPage = React.lazy(() => import('./pages/static/ContactPage').then(module => ({ default: module.ContactPage })));
-const PrivacyPage = React.lazy(() => import('./pages/static/PrivacyPage').then(module => ({ default: module.PrivacyPage })));
-const TermsPage = React.lazy(() => import('./pages/static/TermsPage').then(module => ({ default: module.TermsPage })));
+const ResourcesPage = React.lazy(() => import('./pages/resources/ResourcesPage').then(m => ({ default: m.default })));
+const AboutPage = React.lazy(() => import('./pages/static/AboutPage').then(m => ({ default: m.default })));
+const ContactPage = React.lazy(() => import('./pages/static/ContactPage').then(m => ({ default: m.ContactPage })));
+const PrivacyPage = React.lazy(() => import('./pages/static/PrivacyPage').then(m => ({ default: m.PrivacyPage })));
+const TermsPage = React.lazy(() => import('./pages/static/TermsPage').then(m => ({ default: m.TermsPage })));
 
 // Admin Pages
-const AdminLayout = React.lazy(() => import('./pages/admin/AdminLayout'));
-const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
-const Resources = React.lazy(() => import('./pages/admin/Resources'));
-const Categories = React.lazy(() => import('./pages/admin/Categories'));
-const Submissions = React.lazy(() => import('./pages/admin/Submissions'));
-const Messages = React.lazy(() => import('./pages/admin/Messages'));
-const Users = React.lazy(() => import('./pages/admin/Users'));
+const AdminLayout = React.lazy(() => import('./pages/admin/AdminLayout').then(m => ({ default: m.default })));
+const Dashboard = React.lazy(() => import('./pages/admin/Dashboard').then(m => ({ default: m.default })));
+const Resources = React.lazy(() => import('./pages/admin/Resources').then(m => ({ default: m.default })));
+const Categories = React.lazy(() => import('./pages/admin/Categories').then(m => ({ default: m.default })));
+const Submissions = React.lazy(() => import('./pages/admin/Submissions').then(m => ({ default: m.default })));
+const Messages = React.lazy(() => import('./pages/admin/Messages').then(m => ({ default: m.default })));
+const Users = React.lazy(() => import('./pages/admin/Users').then(m => ({ default: m.default })));
 
 // Auth Pages
-const LoginPage = React.lazy(() => import('./pages/admin/auth/LoginPage').then(module => ({ default: module.default })));
-const SetupPage = React.lazy(() => import('./pages/admin/auth/SetupPage').then(module => ({ default: module.default })));
+const LoginPage = React.lazy(() => import('./pages/admin/auth/LoginPage').then(m => ({ default: m.default })));
+const SetupPage = React.lazy(() => import('./pages/admin/auth/SetupPage').then(m => ({ default: m.default })));
 
 // Loading Component
 const LoadingFallback = () => (
   <div className="min-h-screen bg-gray-900 flex items-center justify-center">
     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
   </div>
-);
-
-// Admin Layout Wrapper
-const AdminLayoutWrapper = () => (
-  <AdminLayout>
-    <Outlet />
-  </AdminLayout>
 );
 
 function App() {
@@ -56,7 +49,7 @@ function App() {
               <Route path="/admin/setup" element={<SetupPage />} />
 
               {/* Admin Routes */}
-              <Route path="/admin" element={<AdminLayoutWrapper />}>
+              <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="resources" element={<Resources />} />
                 <Route path="categories" element={<Categories />} />

@@ -1,6 +1,5 @@
 <?php
 require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/auth/auth_middleware.php';
 
 header('Content-Type: application/json');
 
@@ -14,6 +13,7 @@ try {
     switch ($method) {
         case 'GET':
             // Verify admin is logged in for GET requests
+            require_once __DIR__ . '/auth/auth_middleware.php';
             $user = authenticate();
             if (!$user) {
                 http_response_code(401);
@@ -72,7 +72,7 @@ try {
             break;
 
         case 'POST':
-            // Handle new submission
+            // Handle new submission (no auth required)
             $data = json_decode(file_get_contents('php://input'), true);
 
             // Validate required fields
@@ -84,18 +84,57 @@ try {
                 exit;
             }
 
+            // Validate email format
+            if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Invalid email format']);
+                exit;
+            }
+
+            // Validate URL format
+            if (!filter_var($data['api_link'], FILTER_VALIDATE_URL)) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Invalid API link format']);
+                exit;
+            }
+
+            // Rate limiting - check if there are too many submissions from this IP
+            $ip = $_SERVER['REMOTE_ADDR'];
+            $stmt = $conn->prepare("
+                SELECT COUNT(*) as count 
+                FROM submissions 
+                WHERE created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR) 
+                AND ip_address = ?
+            ");
+            $stmt->execute([$ip]);
+            $submissionCount = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+
+            if ($submissionCount >= 3) {  // Max 3 submissions per hour
+                http_response_code(429);
+                echo json_encode(['success' => false, 'message' => 'Too many submissions. Please try again later.']);
+                exit;
+            }
+
+            // Sanitize inputs
+            $name = htmlspecialchars(strip_tags($data['name']));
+            $email = filter_var($data['email'], FILTER_SANITIZE_EMAIL);
+            $tool_name = htmlspecialchars(strip_tags($data['tool_name']));
+            $description = htmlspecialchars(strip_tags($data['description']));
+            $api_link = filter_var($data['api_link'], FILTER_SANITIZE_URL);
+
             // Insert submission
             $stmt = $conn->prepare("
-                INSERT INTO submissions (id, name, email, tool_name, description, api_link, status)
-                VALUES (UUID(), ?, ?, ?, ?, ?, 'pending')
+                INSERT INTO submissions (id, name, email, tool_name, description, api_link, status, ip_address)
+                VALUES (UUID(), ?, ?, ?, ?, ?, 'pending', ?)
             ");
 
             $success = $stmt->execute([
-                $data['name'],
-                $data['email'],
-                $data['tool_name'],
-                $data['description'],
-                $data['api_link']
+                $name,
+                $email,
+                $tool_name,
+                $description,
+                $api_link,
+                $ip
             ]);
 
             if ($success) {
@@ -104,13 +143,13 @@ try {
                     'message' => 'Submission received successfully'
                 ]);
             } else {
-                http_response_code(500);
-                echo json_encode(['success' => false, 'message' => 'Failed to submit']);
+                throw new Exception('Failed to save submission');
             }
             break;
 
         case 'PUT':
             // Verify admin is logged in for PUT requests
+            require_once __DIR__ . '/auth/auth_middleware.php';
             $user = authenticate();
             if (!$user) {
                 http_response_code(401);
@@ -131,6 +170,13 @@ try {
             if (!isset($data['status']) || !in_array($data['status'], ['pending', 'approved', 'rejected'])) {
                 http_response_code(400);
                 echo json_encode(['success' => false, 'message' => 'Valid status is required']);
+                exit;
+            }
+
+            // If approving, require category_id
+            if ($data['status'] === 'approved' && !isset($data['category_id'])) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Category is required when approving']);
                 exit;
             }
 
@@ -163,7 +209,7 @@ try {
                             $submission['tool_name'],
                             $submission['description'],
                             $submission['api_link'],
-                            'ai_models' // Default category, can be updated later
+                            $data['category_id']  // Use selected category
                         ]);
                     } catch (Exception $e) {
                         error_log('Failed to create resource from submission: ' . $e->getMessage());
@@ -177,13 +223,13 @@ try {
                     'data' => $submission
                 ]);
             } else {
-                http_response_code(500);
-                echo json_encode(['success' => false, 'message' => 'Failed to update submission']);
+                throw new Exception('Failed to update submission');
             }
             break;
 
         case 'DELETE':
             // Verify admin is logged in for DELETE requests
+            require_once __DIR__ . '/auth/auth_middleware.php';
             $user = authenticate();
             if (!$user) {
                 http_response_code(401);
@@ -207,8 +253,7 @@ try {
                     'message' => 'Submission deleted successfully'
                 ]);
             } else {
-                http_response_code(500);
-                echo json_encode(['success' => false, 'message' => 'Failed to delete submission']);
+                throw new Exception('Failed to delete submission');
             }
             break;
 
@@ -220,7 +265,10 @@ try {
 } catch (Exception $e) {
     error_log($e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'An error occurred']);
+    echo json_encode([
+        'success' => false, 
+        'message' => 'An error occurred while processing your request'
+    ]);
 }
 
 $conn = null;

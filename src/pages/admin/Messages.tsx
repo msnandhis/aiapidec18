@@ -11,6 +11,8 @@ export default function Messages() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'unread' | 'read' | 'replied'>('all');
+  const [editingNotes, setEditingNotes] = useState<{ [key: string]: string }>({});
+  const [showNotesModal, setShowNotesModal] = useState<string | null>(null);
 
   useEffect(() => {
     loadMessages();
@@ -38,14 +40,20 @@ export default function Messages() {
     }
   };
 
-  const handleStatusUpdate = async (id: string, status: 'read' | 'replied') => {
+  const handleStatusUpdate = async (id: string, status: 'read' | 'replied', notes?: string) => {
     try {
       setError(null);
-      const response = await updateMessageStatus(id, status);
+      const response = await updateMessageStatus(id, status, notes);
       if (response.success) {
         setMessages(prev => prev.map(message =>
-          message.id === id ? { ...message, status } : message
+          message.id === id ? { ...message, status, admin_notes: notes } : message
         ));
+        setShowNotesModal(null);
+        setEditingNotes(prev => {
+          const newNotes = { ...prev };
+          delete newNotes[id];
+          return newNotes;
+        });
       } else {
         throw new Error(response.message || 'Failed to update message status');
       }
@@ -71,6 +79,41 @@ export default function Messages() {
       setError(err instanceof Error ? err.message : 'Failed to delete message');
     }
   };
+
+  const NotesModal = ({ messageId }: { messageId: string }) => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-gray-800 rounded-lg max-w-lg w-full p-6">
+        <h3 className="text-xl font-semibold text-gray-100 mb-4">Add Reply Notes</h3>
+        <textarea
+          value={editingNotes[messageId] || ''}
+          onChange={(e) => setEditingNotes(prev => ({
+            ...prev,
+            [messageId]: e.target.value
+          }))}
+          rows={4}
+          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg
+                   text-gray-200 placeholder-gray-400 focus:outline-none focus:border-blue-500"
+          placeholder="Add notes about your reply..."
+        />
+        <div className="flex justify-end gap-2 mt-4">
+          <button
+            onClick={() => setShowNotesModal(null)}
+            className="px-4 py-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 
+                     rounded-lg transition-colors duration-200"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => handleStatusUpdate(messageId, 'replied', editingNotes[messageId])}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 
+                     transition-colors duration-200"
+          >
+            Mark as Replied
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   if (isLoading) {
     return (
@@ -138,7 +181,7 @@ export default function Messages() {
                 <p className="mt-4 text-gray-300">{message.message}</p>
                 {message.admin_notes && (
                   <div className="mt-4 p-4 bg-gray-700/50 rounded-lg">
-                    <p className="text-sm font-medium text-gray-300">Admin Notes:</p>
+                    <p className="text-sm font-medium text-gray-300">Reply Notes:</p>
                     <p className="text-sm text-gray-400 mt-1">{message.admin_notes}</p>
                   </div>
                 )}
@@ -158,7 +201,7 @@ export default function Messages() {
                   </button>
                 )}
                 <button
-                  onClick={() => handleStatusUpdate(message.id, 'replied')}
+                  onClick={() => setShowNotesModal(message.id)}
                   className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 
                            rounded-lg transition-colors duration-200"
                   title="Mark as replied"
@@ -194,6 +237,8 @@ export default function Messages() {
           </div>
         )}
       </div>
+
+      {showNotesModal && <NotesModal messageId={showNotesModal} />}
     </div>
   );
 }

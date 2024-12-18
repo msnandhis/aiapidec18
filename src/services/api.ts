@@ -185,13 +185,14 @@ export async function submitApiKit(data: {
 export async function updateSubmissionStatus(
   id: string,
   status: 'pending' | 'approved' | 'rejected',
-  notes?: string
+  notes?: string,
+  category_id?: string
 ): Promise<ApiResponse<Submission>> {
   const url = buildUrl('submissions.php', { id });
   const response = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status, admin_notes: notes }),
+    body: JSON.stringify({ status, admin_notes: notes, category_id }),
   });
   return handleResponse<Submission>(response);
 }
